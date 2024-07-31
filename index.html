@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brainlet 2 Price Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        #analysisMessage {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .meterContainer {
+            margin-top: 20px;
+        }
+        .meter {
+            width: 100%;
+            height: 30px;
+            background-color: #e0e0e0;
+            position: relative;
+            margin-bottom: 10px;
+        }
+        .meterFill {
+            height: 100%;
+            text-align: center;
+            line-height: 30px;
+            color: white;
+            width: 0;
+        }
+        footer {
+            margin-top: 20px;
+            font-size: 0.8em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <p> NFA DYOR chart is just some scribbles I eat paraffin for breakfast </p>
+    <canvas id="priceChart" width="400" height="200"></canvas>
+    <div id="analysisMessage"></div>
+    
+    <div class="meterContainer">
+        <div class="meter">
+            <div id="bullishMeterFill" class="meterFill">0%</div>
+        </div>
+        <p>
+            math-o-meters:
+        </p>
+        <div class="meter">
+            <div id="volatilityMeterFill" class="meterFill">0%</div>
+        </div>
+        <div class="meter">
+            <div id="rateOfChangeMeterFill" class="meterFill">0%</div>
+        </div>
+        <div class="meter">
+            <div id="accelerationMeterFill" class="meterFill">0%</div>
+        </div>
+        <div class="meter">
+            <div id="rsiMeterFill" class="meterFill">0%</div>
+        </div>
+    </div>
+
+    <footer>
+        Data provided by <a href="https://www.coingecko.com" target="_blank">CoinGecko</a>
+    </footer>
+    
+    <script>
+        async function fetchPriceHistory(url) {
+            const response = await fetch(url);
+            const data = await response.json();
+            return data.prices;
+        }
+
+        async function fetchAllPriceData() {
+            const [oneDayData, thirtyDayData] = await Promise.all([
+                fetchPriceHistory('https://api.coingecko.com/api/v3/coins/brainlet-2/market_chart?vs_currency=usd&days=1'),
+                fetchPriceHistory('https://api.coingecko.com/api/v3/coins/brainlet/market_chart?vs_currency=usd&days=30')
+            ]);
+            return { oneDayData, thirtyDayData };
+        }
+
+        function calculateEMA(prices, period) {
+            const k = 2 / (period + 1);
+            let emaArray = [prices[0][1]];
+            for (let i = 1; i < prices.length; i++) {
+                emaArray.push(prices[i][1] * k + emaArray[i - 1] * (1 - k));
+            }
+            return emaArray;
+        }
+
+        function calculateRSI(prices, period = 14) {
+            let gains = 0, losses = 0, rsi = [];
+            for (let i = 1; i < period; i++) {
+                const change = prices[i][1] - prices[i - 1][1];
+                if (change > 0) gains += change;
+                else losses -= change;
+            }
+            let avgGain = gains / period;
+            let avgLoss = losses / period;
+            for (let i = period; i < prices.length; i++) {
+                const change = prices[i][1] - prices[i - 1][1];
+                if (change > 0) {
+                    avgGain = ((avgGain * (period - 1)) + change) / period;
+                    avgLoss = (avgLoss * (period - 1)) / period;
+                } else {
+                    avgGain = (avgGain * (period - 1)) / period;
+                    avgLoss = ((avgLoss * (period - 1)) - change) / period;
+                }
+                const rs = avgGain / avgLoss;
+                rsi.push(100 - (100 / (1 + rs)));
+            }
+            return rsi;
+        }
+
+        function calculateDerivatives(prices) {
+            const firstDerivative = [];
+            const secondDerivative = [];
+
+            for (let i = 1; i < prices.length; i++) {
+                const rateOfChange = prices[i][1] - prices[i - 1][1];
+                firstDerivative.push([prices[i][0], rateOfChange]);
+
+                if (i > 1) {
+                    const acceleration = rateOfChange - (prices[i - 1][1] - prices[i - 2][1]);
+                    secondDerivative.push([prices[i][0], acceleration]);
+                }
+            }
+
+            return { firstDerivative, secondDerivative };
+        }
+
+        function analyzePrices(oneDayPrices, thirtyDayPrices) {
+            const allPrices = [...thirtyDayPrices, ...oneDayPrices];
+            const { firstDerivative, secondDerivative } = calculateDerivatives(allPrices);
+
+            let totalChange = 0;
+            let upwardTrends = 0;
+            let downwardTrends = 0;
+            let sharpIncreases = 0;
+            let sharpDecreases = 0;
+            let totalRateOfChange = 0;
+            let totalAcceleration = 0;
+
+            for (let i = 1; i < allPrices.length; i++) {
+                const change = allPrices[i][1] - allPrices[i - 1][1];
+                totalChange += change;
+                totalRateOfChange += firstDerivative[i - 1][1];
+
+                if (i > 1) {
+                    totalAcceleration += secondDerivative[i - 2][1];
+                }
+
+                if (change > 0) {
+                    upwardTrends++;
+                    if (change / allPrices[i - 1][1] > 0.05) {
+                        sharpIncreases++;
+                    }
+                } else if (change < 0) {
+                    downwardTrends++;
+                    if (Math.abs(change) / allPrices[i - 1][1] > 0.05) {
+                        sharpDecreases++;
+                    }
+                }
+            }
+
+            const totalTrends = upwardTrends + downwardTrends;
+            const basicBullishPercentage = totalTrends > 0 ? (upwardTrends / totalTrends) * 100 : 0;
+            const averageChange = totalChange / allPrices.length;
+            const averageRateOfChange = totalRateOfChange / firstDerivative.length;
+            const averageAcceleration = totalAcceleration / secondDerivative.length;
+            const volatility = Math.sqrt(allPrices.map(price => Math.pow(price[1] - averageChange, 2)).reduce((a, b) => a + b) / allPrices.length);
+
+            const shortTermEMA = calculateEMA(oneDayPrices, 10);
+            const longTermEMA = calculateEMA(thirtyDayPrices, 50);
+            const rsi = calculateRSI(allPrices);
+
+            // Combine metrics into a single bullish percentage
+            let combinedBullishPercentage = basicBullishPercentage;
+            if (shortTermEMA[shortTermEMA.length - 1] > longTermEMA[longTermEMA.length - 1]) {
+                combinedBullishPercentage += 10;
+            }
+            if (averageRateOfChange > 0) {
+                combinedBullishPercentage += 10;
+            }
+            if (averageAcceleration > 0) {
+                combinedBullishPercentage += 10;
+            }
+            const latestRSI = rsi[rsi.length - 1];
+            if (latestRSI < 70) {
+                combinedBullishPercentage += 10;
+            } else if (latestRSI > 70) {
+                combinedBullishPercentage -= 10;
+            }
+
+            const analysis = {
+                totalChange,
+                upwardTrends,
+                downwardTrends,
+                sharpIncreases,
+                sharpDecreases,
+                basicBullishPercentage,
+                combinedBullishPercentage,
+                averageChange,
+                averageRateOfChange,
+                averageAcceleration,
+                volatility,
+                shortTermEMA,
+                longTermEMA,
+                rsi
+            };
+            return analysis;
+        }
+
+        function generateAnalysisMessage(analysis) {
+            const { combinedBullishPercentage, volatility, averageRateOfChange, averageAcceleration, rsi } = analysis;
+
+            let message = '';
+            let barColor = '#76c7c0';
+
+            if (combinedBullishPercentage >= 90) {
+                message = "APE NOW";
+                barColor = '#4caf50';
+            } else if (combinedBullishPercentage >= 70) {
+                message = "Very Bullish";
+                barColor = '#66bb6a';
+            } else if (combinedBullishPercentage >= 50) {
+                message = "Bullish";
+                barColor = '#ffeb3b';
+            } else if (combinedBullishPercentage >= 30) {
+                message = "Good entry";
+                barColor = '#ffa726';
+            } else {
+                message = "Long Term Play";
+                barColor = '#f44336';
+            }
+
+            if (volatility > 0.1) {
+                message += " - High Volatility";
+            } else if (volatility > 0.05) {
+                message += " - Medium Volatility";
+            } else {
+                message += " - Low Volatility";
+            }
+
+            const latestRSI = rsi[rsi.length - 1];
+            if (latestRSI >= 70) {
+                message += " - Overbought";
+            } else if (latestRSI <= 30) {
+                message += " - Oversold";
+            }
+
+            return { message, combinedBullishPercentage, barColor, volatility, averageRateOfChange, averageAcceleration, latestRSI };
+        }
+
+        function updateMeter(elementId, value, barColor) {
+            const meterFill = document.getElementById(elementId);
+            meterFill.style.width = value + '%';
+            meterFill.style.backgroundColor = barColor;
+            meterFill.innerText = value.toFixed(2) + '%';
+        }
+
+        async function renderChart() {
+            const { oneDayData, thirtyDayData } = await fetchAllPriceData();
+            const labels = oneDayData.map(pricePoint => new Date(pricePoint[0]).toLocaleTimeString());
+            const prices = oneDayData.map(pricePoint => pricePoint[1]);
+
+            const analysis = analyzePrices(oneDayData, thirtyDayData);
+            const { message, combinedBullishPercentage, barColor, volatility, averageRateOfChange, averageAcceleration, latestRSI } = generateAnalysisMessage(analysis);
+
+            document.getElementById('analysisMessage').innerText = message;
+
+            updateMeter('bullishMeterFill', combinedBullishPercentage, barColor);
+            updateMeter('volatilityMeterFill', volatility * 100, '#76c7c0');
+            updateMeter('rateOfChangeMeterFill', averageRateOfChange * 10, '#76c7c0');
+            updateMeter('accelerationMeterFill', averageAcceleration * 10, '#76c7c0');
+            updateMeter('rsiMeterFill', latestRSI, '#76c7c0');
+
+            const ctx = document.getElementById('priceChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Brainlet 2 Price (USD)',
+                        data: prices,
+                        borderColor: 'rgba(75, 192, 192, 1)',
+                        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Time'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price (USD)'
+                            },
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+        }
+
+        renderChart();
+    </script>
+</body>
+</html>
