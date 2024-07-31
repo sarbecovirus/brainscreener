@@ -28,6 +28,12 @@
             color: white;
             width: 0;
         }
+        #marketCap {
+            font-size: 1.2em;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 10px;
+        }
         footer {
             margin-top: 20px;
             font-size: 0.8em;
@@ -37,6 +43,7 @@
 </head>
 <body>
     <p> NFA DYOR chart is just some scribbles I eat paraffin for breakfast </p>
+    <div id="marketCap">Market Cap: Loading...</div>
     <canvas id="priceChart" width="400" height="200"></canvas>
     <div id="analysisMessage"></div>
     
@@ -69,7 +76,7 @@
         async function fetchPriceHistory(url) {
             const response = await fetch(url);
             const data = await response.json();
-            return data.prices;
+            return data;
         }
 
         async function fetchAllPriceData() {
@@ -131,7 +138,7 @@
         }
 
         function analyzePrices(oneDayPrices, thirtyDayPrices) {
-            const allPrices = [...thirtyDayPrices, ...oneDayPrices];
+            const allPrices = [...thirtyDayPrices.prices, ...oneDayPrices.prices];
             const { firstDerivative, secondDerivative } = calculateDerivatives(allPrices);
 
             let totalChange = 0;
@@ -171,8 +178,8 @@
             const averageAcceleration = totalAcceleration / secondDerivative.length;
             const volatility = Math.sqrt(allPrices.map(price => Math.pow(price[1] - averageChange, 2)).reduce((a, b) => a + b) / allPrices.length);
 
-            const shortTermEMA = calculateEMA(oneDayPrices, 10);
-            const longTermEMA = calculateEMA(thirtyDayPrices, 50);
+            const shortTermEMA = calculateEMA(oneDayPrices.prices, 10);
+            const longTermEMA = calculateEMA(thirtyDayPrices.prices, 50);
             const rsi = calculateRSI(allPrices);
 
             // Combine metrics into a single bullish percentage
@@ -262,8 +269,8 @@
 
         async function renderChart() {
             const { oneDayData, thirtyDayData } = await fetchAllPriceData();
-            const labels = oneDayData.map(pricePoint => new Date(pricePoint[0]).toLocaleTimeString());
-            const prices = oneDayData.map(pricePoint => pricePoint[1]);
+            const labels = oneDayData.prices.map(pricePoint => new Date(pricePoint[0]).toLocaleTimeString());
+            const prices = oneDayData.prices.map(pricePoint => pricePoint[1]);
 
             const analysis = analyzePrices(oneDayData, thirtyDayData);
             const { message, combinedBullishPercentage, barColor, volatility, averageRateOfChange, averageAcceleration, latestRSI } = generateAnalysisMessage(analysis);
@@ -275,6 +282,8 @@
             updateMeter('rateOfChangeMeterFill', averageRateOfChange * 10, '#76c7c0');
             updateMeter('accelerationMeterFill', averageAcceleration * 10, '#76c7c0');
             updateMeter('rsiMeterFill', latestRSI, '#76c7c0');
+
+            document.getElementById('marketCap').innerText = `Market Cap: $${(prices.slice(-1)*1000000000).toLocaleString()}`;
 
             const ctx = document.getElementById('priceChart').getContext('2d');
             new Chart(ctx, {
